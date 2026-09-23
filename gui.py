@@ -6,11 +6,13 @@ class BlogApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Sistema de Gestión de Blog - Oracle PL/SQL")
-        self.geometry("1024x768")
-        self.minsize(1024, 768)
+        self.geometry("980x650")
+        self.minsize(850, 550)
 
         self.usuario_activo_id = None
         self.usuario_activo_nombre = None
+        self.dict_usuarios = {}
+        self.articulos_db = {}
 
         self.style = ttk.Style(self)
         self.style.theme_use('clam')
@@ -25,12 +27,15 @@ class BlogApp(tk.Tk):
 
         ttk.Label(top_bar, text="Usuario Activo:", font=("Helvetica", 10, "bold")).pack(side=tk.LEFT, padx=5)
         
-        self.combo_usuarios = ttk.Combobox(top_bar, state="readonly", width=30)
+        self.combo_usuarios = ttk.Combobox(top_bar, state="readonly", width=25)
         self.combo_usuarios.pack(side=tk.LEFT, padx=5)
         self.combo_usuarios.bind("<<ComboboxSelected>>", self.seleccionar_usuario)
 
         btn_nuevo_usuario = ttk.Button(top_bar, text="+ Registrar Usuario", command=self.modal_registrar_usuario)
         btn_nuevo_usuario.pack(side=tk.LEFT, padx=5)
+
+        btn_ocultar_usuario = ttk.Button(top_bar, text="🗑 Eliminar Usuario", command=self.eliminar_usuario)
+        btn_ocultar_usuario.pack(side=tk.LEFT, padx=5)
 
         btn_nuevo_articulo = ttk.Button(top_bar, text="✍ Publicar Artículo", command=self.modal_crear_articulo)
         btn_nuevo_articulo.pack(side=tk.RIGHT, padx=5)
@@ -51,8 +56,8 @@ class BlogApp(tk.Tk):
         self.tree_articulos.heading("comentarios", text="Comentarios")
 
         self.tree_articulos.column("id", width=40, anchor="center")
-        self.tree_articulos.column("titulo", width=200)
-        self.tree_articulos.column("autor", width=100)
+        self.tree_articulos.column("titulo", width=180)
+        self.tree_articulos.column("autor", width=90)
         self.tree_articulos.column("comentarios", width=80, anchor="center")
 
         self.tree_articulos.pack(fill=tk.BOTH, expand=True)
@@ -77,16 +82,19 @@ class BlogApp(tk.Tk):
         btn_box.pack(fill=tk.X, pady=5)
 
         btn_comentar = ttk.Button(btn_box, text="💬 Agregar Comentario", command=self.modal_agregar_comentario)
-        btn_comentar.pack(side=tk.LEFT, padx=5)
+        btn_comentar.pack(side=tk.LEFT, padx=2)
+
+        btn_ocultar_comentario = ttk.Button(btn_box, text="🗑 Eliminar Comentario", command=self.eliminar_comentario)
+        btn_ocultar_comentario.pack(side=tk.LEFT, padx=2)
 
         btn_tag = ttk.Button(btn_box, text="🏷 Agregar Tag", command=lambda: self.modal_asignar_taxonomia("tag"))
-        btn_tag.pack(side=tk.LEFT, padx=5)
+        btn_tag.pack(side=tk.LEFT, padx=2)
 
         btn_categoria = ttk.Button(btn_box, text="📂 Agregar Categoría", command=lambda: self.modal_asignar_taxonomia("categoria"))
-        btn_categoria.pack(side=tk.LEFT, padx=5)
+        btn_categoria.pack(side=tk.LEFT, padx=2)
 
-        btn_eliminar = ttk.Button(btn_box, text="🗑 Ocultar Artículo (Lógico)", command=self.eliminar_articulo)
-        btn_eliminar.pack(side=tk.RIGHT, padx=5)
+        btn_eliminar = ttk.Button(btn_box, text="🗑 Eliminar Artículo", command=self.eliminar_articulo)
+        btn_eliminar.pack(side=tk.RIGHT, padx=2)
 
         ttk.Label(right_frame, text="Comentarios:", font=("Helvetica", 10, "bold")).pack(anchor=tk.W, pady=(10, 2))
         
@@ -102,6 +110,10 @@ class BlogApp(tk.Tk):
             if usuarios:
                 self.combo_usuarios.current(0)
                 self.seleccionar_usuario(None)
+            else:
+                self.combo_usuarios.set("")
+                self.usuario_activo_id = None
+                self.usuario_activo_nombre = None
         except Exception as e:
             messagebox.showerror("Error de Base de Datos", f"No se pudieron cargar usuarios:\n{e}")
 
@@ -115,10 +127,14 @@ class BlogApp(tk.Tk):
         for item in self.tree_articulos.get_children():
             self.tree_articulos.delete(item)
 
+        self.articulos_db.clear()
+
         try:
             articulos = db.listar_articulos()
             for art in articulos:
-                self.tree_articulos.insert("", tk.END, iid=art[0], values=(art[0], art[1], art[2], art[5]), tags=(art[3], art[4]))
+                art_id = str(art[0])
+                self.articulos_db[art_id] = art
+                self.tree_articulos.insert("", tk.END, iid=art_id, values=(art[0], art[1], art[2], art[5]))
         except Exception as e:
             messagebox.showerror("Error", f"Error al listar artículos:\n{e}")
 
@@ -127,17 +143,18 @@ class BlogApp(tk.Tk):
         if not selected_item:
             return
 
-        art_id = selected_item[0]
-        item_data = self.tree_articulos.item(art_id)
-        values = item_data['values']
-        fecha, texto = item_data['tags']
+        art_id = str(selected_item[0])
+        art = self.articulos_db.get(art_id)
+        if not art:
+            return
 
-        self.lbl_titulo.config(text=values[1])
-        self.lbl_meta.config(text=f"Por: {values[2]} | Fecha: {fecha}")
+        _, titulo, autor, fecha, texto, _ = art
+
+        self.lbl_titulo.config(text=titulo)
+        self.lbl_meta.config(text=f"Por: {autor} | Fecha: {fecha}")
 
         self.txt_contenido.delete("1.0", tk.END)
-        contenido_str = str(texto.read()) if hasattr(texto, 'read') else str(texto)
-        self.txt_contenido.insert(tk.END, contenido_str)
+        self.txt_contenido.insert(tk.END, texto)
 
         self.cargar_comentarios(art_id)
         self.refrescar_taxonomia(int(art_id))
@@ -149,10 +166,10 @@ class BlogApp(tk.Tk):
         try:
             comentarios = db.obtener_comentarios(article_id)
             if not comentarios:
-                self.txt_comentarios.insert(tk.END, "Aún no hay comentarios en este artículo.")
+                self.txt_comentarios.insert(tk.END, "Aún no hay comentarios activos en este artículo.")
             else:
                 for c in comentarios:
-                    self.txt_comentarios.insert(tk.END, f"• {c[0]}: {c[1]}\n")
+                    self.txt_comentarios.insert(tk.END, f"• [ID: {c[0]}] {c[1]}: {c[2]}\n")
         except Exception as e:
             self.txt_comentarios.insert(tk.END, f"Error al cargar comentarios: {e}")
 
@@ -208,6 +225,26 @@ class BlogApp(tk.Tk):
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo guardar el usuario:\n{e}")
 
+    def eliminar_usuario(self):
+        if not self.usuario_activo_id:
+            messagebox.showwarning("Atención", "No hay ningún usuario activo seleccionado.")
+            return
+
+        confirmar = messagebox.askyesno(
+            "Confirmar Eliminacion",
+            f"¿Desea Eliminar al usuario '{self.usuario_activo_nombre}'?\n\n(Sus publicaciones deberan ser eliminadas del sistema manualmente).",
+            parent=self
+        )
+
+        if confirmar:
+            try:
+                db.eliminar_usuario_logico(self.usuario_activo_id)
+                messagebox.showinfo("Éxito", "Usuario eliminado correctamente.")
+                self.cargar_usuarios()
+                self.cargar_articulos()
+            except Exception as e:
+                messagebox.showerror("Error", f"No se pudo eliminar el usuario:\n{e}")
+
     def modal_crear_articulo(self):
         if not self.usuario_activo_id:
             messagebox.showwarning("Atención", "Seleccione o registre un usuario primero.")
@@ -242,6 +279,34 @@ class BlogApp(tk.Tk):
 
         ttk.Button(win, text="Publicar", command=guardar).pack(pady=10)
 
+    def eliminar_articulo(self):
+        selected_item = self.tree_articulos.selection()
+        if not selected_item:
+            messagebox.showwarning("Atención", "Seleccione un artículo de la lista.")
+            return
+
+        art_id = int(selected_item[0])
+        confirmar = messagebox.askyesno(
+            "Confirmar Eliminacion",
+            "¿Desea eliminar esta publicación del sistema público?",
+            parent=self
+        )
+
+        if confirmar:
+            try:
+                db.eliminar_articulo_logico(art_id)
+                messagebox.showinfo("Éxito", "La publicación ha sido eliminada correctamente.")
+                self.lbl_titulo.config(text="Seleccione un artículo para leer")
+                self.lbl_meta.config(text="")
+                self.lbl_tags.config(text="")
+                self.txt_contenido.delete("1.0", tk.END)
+                self.txt_comentarios.config(state=tk.NORMAL)
+                self.txt_comentarios.delete("1.0", tk.END)
+                self.txt_comentarios.config(state=tk.DISABLED)
+                self.cargar_articulos()
+            except Exception as e:
+                messagebox.showerror("Error", f"No se pudo ocultar el artículo:\n{e}")
+
     def modal_agregar_comentario(self):
         selected_item = self.tree_articulos.selection()
         if not selected_item:
@@ -262,33 +327,24 @@ class BlogApp(tk.Tk):
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo guardar el comentario:\n{e}")
 
-    def eliminar_articulo(self):
+    def eliminar_comentario(self):
         selected_item = self.tree_articulos.selection()
         if not selected_item:
-            messagebox.showwarning("Atención", "Seleccione un artículo de la lista.")
+            messagebox.showwarning("Atención", "Seleccione un artículo primero para ver sus comentarios.")
             return
 
-        art_id = int(selected_item[0])
-        confirmar = messagebox.askyesno(
-            "Confirmar Borrado Lógico",
-            "¿Desea ocultar esta publicación del público?\n\n(El artículo permanecerá guardado en el respaldo de Oracle).",
-            parent=self
-        )
+        comment_id = simpledialog.askinteger("Eliminar Comentario", "Ingrese el ID del comentario a eliminar:", parent=self)
+        if not comment_id:
+            return
 
-        if confirmar:
-            try:
-                db.eliminar_articulo_logico(art_id)
-                messagebox.showinfo("Éxito", "La publicación ha sido ocultada correctamente.")
-                self.lbl_titulo.config(text="Seleccione un artículo para leer")
-                self.lbl_meta.config(text="")
-                self.lbl_tags.config(text="")
-                self.txt_contenido.delete("1.0", tk.END)
-                self.txt_comentarios.config(state=tk.NORMAL)
-                self.txt_comentarios.delete("1.0", tk.END)
-                self.txt_comentarios.config(state=tk.DISABLED)
-                self.cargar_articulos()
-            except Exception as e:
-                messagebox.showerror("Error", f"No se pudo ocultar el artículo:\n{e}")
+        try:
+            db.eliminar_comentario_logico(comment_id)
+            messagebox.showinfo("Éxito", f"Comentario #{comment_id} eliminado.")
+            art_id = int(selected_item[0])
+            self.cargar_articulos()
+            self.cargar_comentarios(art_id)
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo eliminar el comentario:\n{e}")
 
 if __name__ == "__main__":
     app = BlogApp()

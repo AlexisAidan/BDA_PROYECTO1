@@ -1,25 +1,36 @@
 import oracledb
 
-USER = "proyecto1"
-PASSWORD = "MiPassword123"  # Cambia esto por tu contraseña si es distinta
-DSN = "localhost:1521/FREEPDB1"
+USER = "system"
+PASSWORD = "MiPassword123"  # Cambia esto por tu información personal
+DSN = "localhost:1521/XEPDB1"
 
 def get_connection():
-    """Retorna una nueva conexión a Oracle Database."""
+    """Nueva conexión a Oracle Database."""
     return oracledb.connect(user=USER, password=PASSWORD, dsn=DSN)
 
+
+# USUARIOS
+
+
 def obtener_usuarios():
-    """Recupera la lista de usuarios registrados."""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT user_id, name, email FROM users ORDER BY name ASC")
+    cursor.execute("SELECT user_id, name, email FROM users WHERE status = 'ACTIVO' ORDER BY name ASC")
+    usuarios = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return usuarios
+
+def obtener_usuarios_inactivos():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id, name, email FROM users WHERE status = 'INACTIVO' ORDER BY user_id ASC")
     usuarios = cursor.fetchall()
     cursor.close()
     conn.close()
     return usuarios
 
 def guardar_usuario(nombre, email):
-    """Invoca el Stored Procedure sp_guardar_usuario."""
     conn = get_connection()
     cursor = conn.cursor()
     out_id = cursor.var(oracledb.NUMBER)
@@ -32,8 +43,25 @@ def guardar_usuario(nombre, email):
     conn.close()
     return new_id
 
+def eliminar_usuario_logico(user_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.callproc("sp_eliminar_usuario_logico", [user_id])
+    cursor.close()
+    conn.close()
+
+def restaurar_usuario_logico(user_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.callproc("sp_restaurar_usuario_logico", [user_id])
+    cursor.close()
+    conn.close()
+
+
+# ARTÍCULOS
+
+
 def listar_articulos():
-    """Invoca sp_listar_articulos que retorna un SYS_REFCURSOR."""
     conn = get_connection()
     cursor = conn.cursor()
     ref_cursor = cursor.var(oracledb.CURSOR)
@@ -42,7 +70,6 @@ def listar_articulos():
     res_cursor = ref_cursor.getvalue()
     rows = res_cursor.fetchall()
     
-    # Se extraen y convierten a cadenas planas
     articulos = []
     for r in rows:
         art_id, titulo, autor, fecha, texto, num_comments = r
@@ -54,8 +81,22 @@ def listar_articulos():
     conn.close()
     return articulos
 
+def obtener_articulos_inactivos():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT a.article_id, a.title, u.name 
+        FROM articles a 
+        JOIN users u ON a.user_id = u.user_id 
+        WHERE a.status = 'INACTIVO' 
+        ORDER BY a.article_id ASC
+    """)
+    articulos = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return articulos
+
 def crear_articulo(user_id, titulo, texto):
-    """Invoca sp_crear_articulo."""
     conn = get_connection()
     cursor = conn.cursor()
     out_id = cursor.var(oracledb.NUMBER)
@@ -69,21 +110,30 @@ def crear_articulo(user_id, titulo, texto):
     return new_id
 
 def eliminar_articulo_logico(article_id):
-    """Invoca sp_eliminar_articulo_logico para ocultar el artículo sin borrarlo."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.callproc("sp_eliminar_articulo_logico", [article_id])
     cursor.close()
     conn.close()
 
+def restaurar_articulo_logico(article_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.callproc("sp_restaurar_articulo_logico", [article_id])
+    cursor.close()
+    conn.close()
+
+
+# COMENTARIOS
+
+
 def obtener_comentarios(article_id):
-    """Obtiene los comentarios de un artículo."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT name, comment_text, url 
+        SELECT comment_id, name, comment_text, url 
         FROM comments 
-        WHERE article_id = :1 
+        WHERE article_id = :1 AND status = 'ACTIVO'
         ORDER BY comment_id ASC
     """, [article_id])
     comentarios = cursor.fetchall()
@@ -91,16 +141,46 @@ def obtener_comentarios(article_id):
     conn.close()
     return comentarios
 
+def obtener_comentarios_inactivos():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT c.comment_id, c.article_id, c.name, c.comment_text 
+        FROM comments c 
+        WHERE c.status = 'INACTIVO' 
+        ORDER BY c.comment_id ASC
+    """)
+    comentarios = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return comentarios
+
 def agregar_comentario(article_id, user_id, nombre, url, texto):
-    """Invoca sp_agregar_comentario."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.callproc("sp_agregar_comentario", [article_id, user_id, nombre, url, texto])
     cursor.close()
     conn.close()
 
+def eliminar_comentario_logico(comment_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.callproc("sp_eliminar_comentario_logico", [comment_id])
+    cursor.close()
+    conn.close()
+
+def restaurar_comentario_logico(comment_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.callproc("sp_restaurar_comentario_logico", [comment_id])
+    cursor.close()
+    conn.close()
+
+
+#  TAGS Y CATEGORÍAS
+
+
 def agregar_tag(article_id, nombre, url=None):
-    """Invoca sp_asignar_tag; crea el tag si no existe y lo vincula al artículo."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.callproc("sp_asignar_tag", [article_id, nombre, url])
@@ -108,17 +188,16 @@ def agregar_tag(article_id, nombre, url=None):
     conn.close()
 
 def obtener_tags(article_id):
-    """Retorna los tags del artículo como texto mediante fn_listar_tags."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT fn_listar_tags(:1) FROM dual", [article_id])
-    tags = cursor.fetchone()[0]
+    res = cursor.fetchone()
+    tags = res[0] if res else ""
     cursor.close()
     conn.close()
     return tags or ""
 
 def agregar_categoria(article_id, nombre, url=None):
-    """Invoca sp_asignar_categoria; crea la categoría si no existe y la vincula al artículo."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.callproc("sp_asignar_categoria", [article_id, nombre, url])
@@ -126,11 +205,11 @@ def agregar_categoria(article_id, nombre, url=None):
     conn.close()
 
 def obtener_categorias(article_id):
-    """Retorna las categorías del artículo como texto mediante fn_listar_categorias."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT fn_listar_categorias(:1) FROM dual", [article_id])
-    categorias = cursor.fetchone()[0]
+    res = cursor.fetchone()
+    categorias = res[0] if res else ""
     cursor.close()
     conn.close()
     return categorias or ""

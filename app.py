@@ -1,8 +1,8 @@
 import oracledb
 
-USER = "proyecto1"
+USER = "system"
 PASSWORD = "MiPassword123"  # Cambia esto por tu contraseña si es distinta
-DSN = "localhost:1521/FREEPDB1"
+DSN = "localhost:1521/XEPDB1"
 
 def ejecutar_main_sql():
     print("Conectando a la base de datos Oracle...")
@@ -39,11 +39,11 @@ def ejecutar_main_sql():
             es_plsql = any(kw in sql_upper for kw in ["BEGIN", "DECLARE", "PROCEDURE", "FUNCTION"])
 
             if es_plsql:
-                # Los bloques PL/SQL DEBEN terminar con punto y coma ';'
+                
                 if not sql_stmt.endswith(';'):
                     sql_stmt += ';'
             else:
-                # Las sentencias SQL normales (CREATE TABLE, DROP) NO llevan punto y coma final
+                
                 if sql_stmt.endswith(';'):
                     sql_stmt = sql_stmt[:-1].strip()
 
